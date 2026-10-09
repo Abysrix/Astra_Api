@@ -1,0 +1,53 @@
+# Render Blueprint for FlagshipRouter - FREE TIER VARIANT.
+#
+# Use this only if you do not want to add a payment method. Point Render's
+# "Blueprint file path" at render.free.yaml instead of render.yaml.
+#
+# READ THIS BEFORE DEPLOYING:
+#   Render's free plan has NO persistent disk, and free instances are stopped
+#   after 15 minutes of inactivity. Everything the router stores in DATA_DIR -
+#   provider connections, OAuth tokens, generated API keys, combos, usage
+#   history - lives on an ephemeral container filesystem, so it is wiped every
+#   time Render restarts or redeploys the instance.
+#
+#   In practice that means: the router boots, you log in with INITIAL_PASSWORD
+#   (that comes from an env var, so it survives), but any API key you create
+#   disappears on the next cold start and you have to recreate it. Fine for a
+#   demo; painful if an IDE is configured against it.
+#
+#   Additionally, free instances sleep after 15 idle minutes. The first request
+#   after that takes 30-60s while the container boots, which most IDE clients
+#   treat as a timeout.
+#
+# For a router that keeps its state and stays warm, use render.yaml (paid
+# starter plan, disk mounted at /app/data).
+services:
+  - type: web
+    name: flagshiprouter-free
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATA_DIR
+        value: /app/data
+      - key: NODE_ENV
+        value: production
+      - key: REQUIRE_API_KEY
+        value: "true"
+      - key: AUTH_COOKIE_SECURE
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: API_KEY_SECRET
+        generateValue: true
+      - key: MACHINE_ID_SALT
+        generateValue: true
+      # Set these in the Render dashboard. sync: false keeps them out of git.
+      - key: INITIAL_PASSWORD
+        sync: false
+      - key: BASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_BASE_URL
+        sync: false

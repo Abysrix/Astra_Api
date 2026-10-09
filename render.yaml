@@ -1,0 +1,45 @@
+# Render Blueprint for FlagshipRouter.
+#
+# Usage: push this repo to GitHub, then in Render choose New > Blueprint and
+# pick the repository. Render reads this file and creates the service.
+#
+# Two things are mandatory for a working deployment:
+#   * the disk        - without it every deploy wipes providers, API keys, combos
+#   * the env vars    - secrets are generated, password/URL are set by you
+#
+# A disk pins the service to a single instance, so do not enable autoscaling.
+# Disks require a paid instance type; Render's free tier has no persistent disk.
+services:
+  - type: web
+    name: flagshiprouter
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATA_DIR
+        value: /app/data
+      - key: NODE_ENV
+        value: production
+      - key: REQUIRE_API_KEY
+        value: "true"
+      - key: AUTH_COOKIE_SECURE
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: API_KEY_SECRET
+        generateValue: true
+      - key: MACHINE_ID_SALT
+        generateValue: true
+      # Set these in the Render dashboard. sync: false keeps them out of git.
+      - key: INITIAL_PASSWORD
+        sync: false
+      - key: BASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_BASE_URL
+        sync: false
+    disk:
+      name: flagshiprouter-data
+      mountPath: /app/data
+      sizeGB: 1

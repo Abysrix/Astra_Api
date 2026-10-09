@@ -11,7 +11,8 @@ for.
 | File | Purpose |
 | --- | --- |
 | `Dockerfile` | The image Railway builds |
-| `railway.json` | Railway build/deploy settings, single replica |
+| `.railway/railway.ts` | Railway Config-as-Code authoring file: service `Astra_Api`, variables unmanaged |
+| `railway.json` | Legacy Railway config; read until the Config-as-Code cutover, kept for compatibility |
 | `render.yaml` | Render Blueprint, paid plan with a disk |
 | `render.free.yaml` | Render Blueprint variant without a disk (state resets) |
 | `docker-compose.yml` | Local container run, for testing before you deploy |
@@ -89,6 +90,23 @@ railway volume add --mount-path /app/data
 railway variables --set "DATA_DIR=/app/data" --set "NODE_ENV=production"
 railway up
 ```
+
+### Config as Code (recommended)
+
+`railway.json` is deprecated and stops being read on 2026-12-01. The repo ships
+an authoring file at `.railway/railway.ts` naming the service `Astra_Api` with
+variables unmanaged. A project that predates Config as Code should migrate it once:
+
+```bash
+railway config migrate --apply --service Astra_Api --variables unmanaged
+# review .railway/railway.ts, then hand the project to IaC:
+railway config migrate cutover   # stop reading railway.json (reversible via `railway config migrate undo`)
+railway config plan              # preview the IaC changes
+railway config apply             # hand management to IaC
+```
+
+Variables stay `unmanaged`, so secrets set in the dashboard or with
+`railway variables` keep working and are never owned by the repo.
 
 ## 3. Render (alternative)
 

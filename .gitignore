@@ -102,3 +102,7 @@ flagshiprouter-*
 .start-dev.ps1
 start-dev-silent.cjs
 debug.log
+
+# local stream capture artifacts
+stream_*.txt
+

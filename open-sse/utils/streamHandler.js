@@ -192,6 +192,73 @@ export function createDisconnectAwareStream(transformStream, streamController, o
  * @param {TransformStream} transformStream - Transform stream for SSE
  * @param {object} streamController - Stream controller from createStreamController
  */
+/**
+ * SSE comment keep-alive.
+ *
+ * Long model "thinking" gaps (and slow first tokens) send zero bytes downstream.
+ * Edge proxies (Railway, nginx, Cloudflare) close idle connections, and the client
+ * then sees the turn end mid-work with no terminal event. A `: keepalive` comment
+ * line is ignored by every SSE parser, so it is safe to interleave between complete
+ * frames. Injection is skipped unless the previous chunk ended a frame (\n\n);
+ * a comment inside an event block would split it, since a blank line terminates
+ * the event.
+ */
+export function withSseKeepAlive(readable, intervalMs = 15000) {
+  const reader = readable.getReader();
+  const encoder = new TextEncoder();
+  const KEEPALIVE = encoder.encode(": keepalive\n\n");
+  let closed = false;
+  let timer = null;
+  let atFrameBoundary = true;
+
+  const clear = () => { if (timer) { clearTimeout(timer); timer = null; } };
+
+  return new ReadableStream({
+    start(controller) {
+      const arm = () => {
+        clear();
+        timer = setTimeout(() => {
+          if (closed) return;
+          if (atFrameBoundary) {
+            try { controller.enqueue(KEEPALIVE); } catch { /* downstream gone */ }
+          }
+          arm();
+        }, intervalMs);
+      };
+      arm();
+
+      const pump = () => {
+        reader.read().then(({ done, value }) => {
+          if (closed) return;
+          if (done) {
+            closed = true;
+            clear();
+            controller.close();
+            return;
+          }
+          const bytes = value instanceof Uint8Array ? value : encoder.encode(String(value));
+          const tail = bytes.length >= 2
+            ? String.fromCharCode(bytes[bytes.length - 2], bytes[bytes.length - 1])
+            : "";
+          atFrameBoundary = tail === "\n\n";
+          controller.enqueue(bytes);
+          pump();
+        }).catch((error) => {
+          closed = true;
+          clear();
+          try { controller.error(error); } catch { /* already closed */ }
+        });
+      };
+      pump();
+    },
+    cancel(reason) {
+      closed = true;
+      clear();
+      reader.cancel(reason).catch(() => {});
+    }
+  });
+}
+
 export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS) {
   let stallTimer = null;
   let chunkCount = 0;

@@ -10,6 +10,12 @@ import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
 
+// Reasoning summaries are display-only: the upstream model still reasons, but the
+// reasoning events below make clients (Codex desktop) render an always-visible
+// "thinking" block. HIDE_REASONING_SUMMARY=1 keeps that text out of the event stream
+// without changing model quality or token accounting.
+const HIDE_REASONING_SUMMARY = /^(1|true|yes|on)$/i.test(String(process.env.HIDE_REASONING_SUMMARY || "").trim());
+
 /**
  * Translate OpenAI chunk to Responses API events
  * @returns {Array} Array of events with { event, data } structure
@@ -98,7 +104,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 
   // Handle reasoning across vendor shapes (reasoning_content / reasoning / reasoning_details)
   const reasoningText = extractReasoningText(delta);
-  if (reasoningText) {
+  if (reasoningText && !HIDE_REASONING_SUMMARY) {
     startReasoning(state, emit, idx);
     emitReasoningDelta(state, emit, reasoningText);
   }
@@ -110,21 +116,21 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     if (content.includes("<think>")) {
       state.inThinking = true;
       content = content.replace("<think>", "");
-      startReasoning(state, emit, idx);
+      if (!HIDE_REASONING_SUMMARY) startReasoning(state, emit, idx);
     }
 
     if (content.includes("</think>")) {
       const parts = content.split("</think>");
       const thinkPart = parts[0];
       const textPart = parts.slice(1).join("</think>");
-      if (thinkPart) emitReasoningDelta(state, emit, thinkPart);
+      if (thinkPart && !HIDE_REASONING_SUMMARY) emitReasoningDelta(state, emit, thinkPart);
       closeReasoning(state, emit);
       state.inThinking = false;
       content = textPart;
     }
 
     if (state.inThinking && content) {
-      emitReasoningDelta(state, emit, content);
+      if (!HIDE_REASONING_SUMMARY) emitReasoningDelta(state, emit, content);
       return events;
     }
 

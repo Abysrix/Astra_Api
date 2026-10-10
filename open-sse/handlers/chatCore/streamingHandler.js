@@ -84,11 +84,13 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, customToolNames, model, connectionId, body, onStreamComplete, apiKey, credentials });
 
   // Terminal bytes when the stream aborts after HTTP 200 was already sent, so the
-  // client sees a real error instead of a silently truncated stream.
-  // Responses passthrough keeps its own response.failed shape; every other client
-  // format gets the OpenAI error frame + [DONE], or `event: error` for Claude.
-  const isResponsesPassthrough = sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI_RESPONSES;
-  const onAbortTerminal = isResponsesPassthrough
+  // client sees a real error instead of a silently truncated stream. Responses-API
+  // clients (Codex, droid CLI) must get a responses-shaped response.failed terminal;
+  // an OpenAI chat error frame + [DONE] is not a valid Responses event and can make
+  // the client close the turn silently. Every other client format keeps the OpenAI
+  // error frame + [DONE], or `event: error` for Claude.
+  const isResponsesClient = sourceFormat === FORMATS.OPENAI_RESPONSES;
+  const onAbortTerminal = isResponsesClient
     ? buildAbortedResponsesTerminalBytes
     : (message) => buildStreamErrorBytes(HTTP_STATUS.GATEWAY_TIMEOUT, message, sourceFormat);
   const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;

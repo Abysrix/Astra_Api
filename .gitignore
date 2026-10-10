@@ -103,6 +103,6 @@ flagshiprouter-*
 start-dev-silent.cjs
 debug.log
 
-# local stream capture artifacts
-stream_*.txt
+# local API probe artifacts
+*.probe.txt
 

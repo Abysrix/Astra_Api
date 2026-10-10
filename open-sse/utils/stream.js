@@ -1,9 +1,14 @@
 import { translateResponse, initState } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
+
+// Display-only reasoning suppression (see openai-responses.js). Some upstreams serve
+// the Responses API natively and are piped through untouched; drop their reasoning
+// events too so no client renders an always-visible thinking block.
+const HIDE_REASONING_SUMMARY = /^(1|true|yes|on)$/i.test(String(process.env.HIDE_REASONING_SUMMARY || "").trim());
 import { trackPendingRequest, appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, COLORS } from "./usageTracking.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
-import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
+import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, isOpenAIResponsesReasoningEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
@@ -82,6 +87,7 @@ export function createSSEStream(options = {}) {
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
+  let skipReasoningEvent = false;  // HIDE_REASONING_SUMMARY: drop one raw Responses reasoning event
   let finalized = false;
 
   // Usage/logging tail, callable from transform() as well as flush(): a client that
@@ -129,6 +135,19 @@ export function createSSEStream(options = {}) {
           if (trimmed.startsWith("event:")) {
             const evt = trimmed.slice(6).trim();
             eventTypeCounts[evt] = (eventTypeCounts[evt] || 0) + 1;
+          }
+        }
+
+        // HIDE_REASONING_SUMMARY: drop a raw Responses reasoning event (event line,
+        // data line and its blank-line terminator) before it reaches the client.
+        if (mode === STREAM_MODE.PASSTHROUGH && HIDE_REASONING_SUMMARY) {
+          if (trimmed.startsWith("event:") && trimmed.slice(6).trim().startsWith("response.reasoning")) {
+            skipReasoningEvent = true;
+            continue;
+          }
+          if (skipReasoningEvent) {
+            if (!trimmed) skipReasoningEvent = false;
+            continue;
           }
         }
 
@@ -261,6 +280,11 @@ export function createSSEStream(options = {}) {
 
         if (isOpenAIResponsesStream && isOpenAIResponsesTerminalEvent(openAIResponsesEventName, parsed)) {
           openAIResponsesTerminalSeen = true;
+        }
+
+        // HIDE_REASONING_SUMMARY: skip reasoning items on the same-format Responses path
+        if (HIDE_REASONING_SUMMARY && isOpenAIResponsesReasoningEvent(openAIResponsesEventName, parsed)) {
+          continue;
         }
 
         // For Ollama: done=true is the final chunk with finish_reason/usage, must translate

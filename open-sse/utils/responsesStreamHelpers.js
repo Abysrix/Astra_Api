@@ -16,6 +16,16 @@ export function getOpenAIResponsesEventName(eventName, chunk) {
   return null;
 }
 
+// Display-only reasoning events (wrapped in an optional container item). Clients
+// like Codex desktop render these as an always-open "thinking" block.
+export function isOpenAIResponsesReasoningEvent(eventName, chunk) {
+  const type = getOpenAIResponsesEventName(eventName, chunk);
+  if (!type) return false;
+  if (type.startsWith("response.reasoning")) return true;
+  if (type.startsWith("response.output_item") && chunk?.item?.type === "reasoning") return true;
+  return false;
+}
+
 export function isOpenAIResponsesTerminalEvent(eventName, chunk) {
   const type = getOpenAIResponsesEventName(eventName, chunk);
   if (OPENAI_RESPONSES_TERMINAL_EVENTS.has(type)) return true;

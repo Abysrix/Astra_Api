@@ -166,6 +166,13 @@ export function createSSEStream(options = {}) {
             try {
               const parsed = JSON.parse(trimmed.slice(5).trim());
 
+              // HIDE_REASONING_SUMMARY: drop reasoning item payloads; their event line
+              // was also skipped above, so no half-event reaches the client.
+              if (HIDE_REASONING_SUMMARY && (String(parsed.type || "").startsWith("response.reasoning") || parsed.item?.type === "reasoning")) {
+                skipReasoningEvent = true; // swallow the terminating blank line too
+                continue;
+              }
+
               const idFixed = fixInvalidId(parsed);
 
               // Ensure OpenAI-required fields are present on streaming chunks (Letta compat)
